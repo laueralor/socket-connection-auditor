@@ -1,0 +1,105 @@
+{% extends "auditor/base.html" %}
+
+{% block title %}Inventario de sockets{% endblock %}
+
+{% block content %}
+
+<h1 class="mb-4">Inventario de sockets del sistema</h1>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <p class="mb-0">
+            Total de sockets detectados:
+            <strong>{{ sockets|length }}</strong>
+        </p>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <label for="searchInput" class="form-label">Buscar socket</label>
+        <input
+            type="text"
+            id="searchInput"
+            class="form-control"
+            placeholder="Buscar por protocolo, estado, IP, puerto o proceso..."
+        >
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-hover table-bordered bg-white" id="socketTable">
+        <thead class="table-dark">
+            <tr>
+                <th>Protocolo</th>
+                <th>Estado</th>
+                <th>Dirección local</th>
+                <th>Dirección remota</th>
+                <th>Proceso</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for s in sockets %}
+                <tr>
+                    <td>
+                        {% if s.netid == "tcp" %}
+                            <span class="badge bg-primary">{{ s.netid|upper }}</span>
+                        {% elif s.netid == "udp" %}
+                            <span class="badge bg-info text-dark">{{ s.netid|upper }}</span>
+                        {% else %}
+                            <span class="badge bg-secondary">{{ s.netid|upper }}</span>
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% if s.state == "LISTEN" %}
+                            <span class="badge bg-success">{{ s.state }}</span>
+                        {% elif s.state == "ESTAB" or s.state == "ESTABLISHED" %}
+                            <span class="badge bg-primary">{{ s.state }}</span>
+                        {% elif s.state == "UNCONN" %}
+                            <span class="badge bg-secondary">{{ s.state }}</span>
+                        {% elif s.state == "CLOSE-WAIT" %}
+                            <span class="badge bg-warning text-dark">{{ s.state }}</span>
+                        {% else %}
+                            <span class="badge bg-dark">{{ s.state }}</span>
+                        {% endif %}
+                    </td>
+
+                    <td><code>{{ s.local }}</code></td>
+                    <td><code>{{ s.peer }}</code></td>
+                    <td><code>{{ s.process }}</code></td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="5" class="text-center text-muted">
+                        No se encontraron sockets.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const searchInput = document.getElementById("searchInput");
+    const tableRows = document.querySelectorAll("#socketTable tbody tr");
+
+    searchInput.addEventListener("input", function () {
+        const searchText = searchInput.value.toLowerCase();
+
+        tableRows.forEach(function (row) {
+            const rowText = row.textContent.toLowerCase();
+
+            if (rowText.includes(searchText)) {
+                row.style.display = "";
+            } else {
+                row.style.display = "none";
+            }
+        });
+    });
+</script>
+{% endblock %}
