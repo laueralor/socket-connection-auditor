@@ -1,105 +1,580 @@
 {% extends "auditor/base.html" %}
 
-{% block title %}Inventario de sockets{% endblock %}
+{% block title %}Socket Inventory | Socket Connection Auditor{% endblock %}
 
 {% block content %}
 
-<h1 class="mb-4">Inventario de sockets del sistema</h1>
+<section class="hero-card p-4 p-lg-5 mb-4">
+    <div class="row align-items-center g-4">
+        <div class="col-lg-8">
+            <span class="badge text-bg-primary mb-3">
+                <i class="bi bi-shield-check me-1"></i>
+                System Network Audit
+            </span>
 
-<div class="card mb-4">
-    <div class="card-body">
-        <p class="mb-0">
-            Total de sockets detectados:
-            <strong>{{ sockets|length }}</strong>
-        </p>
+            <h1 class="hero-title display-6 mb-3">
+                Socket Connection Dashboard
+            </h1>
+
+            <p class="text-muted-app mb-0">
+                Real-time inventory of listening and active network sockets. Use filters, sorting,
+                CSV export and live refresh to inspect system-level connections more efficiently.
+            </p>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="p-3 rounded-4 bg-light border">
+                <div class="small-label mb-1">Last updated</div>
+                <div id="lastUpdated" class="fw-semibold">Loading...</div>
+
+                <hr>
+
+                <div class="d-flex align-items-center gap-2">
+                    <span id="liveDot" class="live-dot"></span>
+                    <span id="liveStatus" class="fw-semibold text-muted">Live Mode disabled</span>
+                </div>
+            </div>
+        </div>
     </div>
+</section>
+
+<section class="row g-3 mb-4">
+    <div class="col-md-6 col-xl-3">
+        <div class="metric-card p-4 h-100">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="small-label mb-2">Total sockets</div>
+                    <div id="totalSockets" class="metric-value">{{ sockets|length }}</div>
+                </div>
+                <span class="metric-icon">
+                    <i class="bi bi-diagram-3"></i>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-xl-3">
+        <div class="metric-card p-4 h-100">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="small-label mb-2">Visible rows</div>
+                    <div id="visibleSockets" class="metric-value">{{ sockets|length }}</div>
+                </div>
+                <span class="metric-icon">
+                    <i class="bi bi-eye"></i>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-xl-3">
+        <div class="metric-card p-4 h-100">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="small-label mb-2">Listening</div>
+                    <div id="listeningSockets" class="metric-value">0</div>
+                </div>
+                <span class="metric-icon">
+                    <i class="bi bi-broadcast"></i>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-xl-3">
+        <div class="metric-card p-4 h-100">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="small-label mb-2">Established</div>
+                    <div id="establishedSockets" class="metric-value">0</div>
+                </div>
+                <span class="metric-icon">
+                    <i class="bi bi-link-45deg"></i>
+                </span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="control-card p-4 mb-4">
+    <div class="row g-3 align-items-end">
+        <div class="col-lg-5">
+            <label for="searchInput" class="form-label fw-semibold">Search</label>
+            <div class="input-group">
+                <span class="input-group-text">
+                    <i class="bi bi-search"></i>
+                </span>
+                <input
+                    type="text"
+                    id="searchInput"
+                    class="form-control"
+                    placeholder="Search by process, PID, protocol, IP address or port..."
+                >
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-2">
+            <label for="protocolFilter" class="form-label fw-semibold">Protocol</label>
+            <select id="protocolFilter" class="form-select">
+                <option value="">All protocols</option>
+                <option value="tcp">TCP</option>
+                <option value="udp">UDP</option>
+            </select>
+        </div>
+
+        <div class="col-md-6 col-lg-2">
+            <label for="stateFilter" class="form-label fw-semibold">State</label>
+            <select id="stateFilter" class="form-select">
+                <option value="">All states</option>
+                <option value="LISTEN">LISTEN</option>
+                <option value="ESTAB">ESTAB</option>
+                <option value="ESTABLISHED">ESTABLISHED</option>
+                <option value="UNCONN">UNCONN</option>
+                <option value="CLOSE-WAIT">CLOSE-WAIT</option>
+                <option value="SYN-SENT">SYN-SENT</option>
+            </select>
+        </div>
+
+        <div class="col-lg-3">
+            <div class="d-flex flex-wrap gap-2">
+                <button id="resetFiltersButton" class="btn btn-outline-secondary flex-fill" type="button">
+                    <i class="bi bi-x-circle me-1"></i>
+                    Reset
+                </button>
+
+                <button id="refreshButton" class="btn btn-outline-primary flex-fill" type="button">
+                    <i class="bi bi-arrow-clockwise me-1"></i>
+                    Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <hr class="my-4">
+
+    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+        <div class="d-flex flex-wrap gap-2">
+            <button id="liveButton" class="btn btn-success" type="button">
+                <i class="bi bi-play-circle me-1"></i>
+                Enable Live Mode
+            </button>
+
+            <button id="exportCsvButton" class="btn btn-outline-dark" type="button">
+                <i class="bi bi-filetype-csv me-1"></i>
+                Export visible rows
+            </button>
+        </div>
+
+        <div class="text-muted-app small d-flex align-items-center">
+            <i class="bi bi-info-circle me-2"></i>
+            Live Mode refreshes the page every 10 seconds.
+        </div>
+    </div>
+</section>
+
+<section class="table-card">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle" id="socketTable">
+            <thead>
+                <tr>
+                    <th>
+                        <button class="sort-button" type="button" data-sort-index="0">
+                            Protocol <i class="bi bi-arrow-down-up ms-1"></i>
+                        </button>
+                    </th>
+                    <th>
+                        <button class="sort-button" type="button" data-sort-index="1">
+                            State <i class="bi bi-arrow-down-up ms-1"></i>
+                        </button>
+                    </th>
+                    <th>
+                        <button class="sort-button" type="button" data-sort-index="2">
+                            Local address <i class="bi bi-arrow-down-up ms-1"></i>
+                        </button>
+                    </th>
+                    <th>
+                        <button class="sort-button" type="button" data-sort-index="3">
+                            Peer address <i class="bi bi-arrow-down-up ms-1"></i>
+                        </button>
+                    </th>
+                    <th>
+                        <button class="sort-button" type="button" data-sort-index="4">
+                            Process <i class="bi bi-arrow-down-up ms-1"></i>
+                        </button>
+                    </th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for s in sockets %}
+                    <tr
+                        data-protocol="{{ s.netid|lower }}"
+                        data-state="{{ s.state }}"
+                        data-search="{{ s.netid }} {{ s.state }} {{ s.local }} {{ s.peer }} {{ s.process }}"
+                    >
+                        <td>
+                            {% if s.netid == "tcp" %}
+                                <span class="badge rounded-pill text-bg-primary status-pill">
+                                    TCP
+                                </span>
+                            {% elif s.netid == "udp" %}
+                                <span class="badge rounded-pill text-bg-info status-pill">
+                                    UDP
+                                </span>
+                            {% else %}
+                                <span class="badge rounded-pill text-bg-secondary status-pill">
+                                    {{ s.netid|upper }}
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {% if s.state == "LISTEN" %}
+                                <span class="badge rounded-pill text-bg-success status-pill">
+                                    <i class="bi bi-broadcast me-1"></i>
+                                    {{ s.state }}
+                                </span>
+                            {% elif s.state == "ESTAB" or s.state == "ESTABLISHED" %}
+                                <span class="badge rounded-pill text-bg-primary status-pill">
+                                    <i class="bi bi-link-45deg me-1"></i>
+                                    {{ s.state }}
+                                </span>
+                            {% elif s.state == "UNCONN" %}
+                                <span class="badge rounded-pill text-bg-secondary status-pill">
+                                    {{ s.state }}
+                                </span>
+                            {% elif s.state == "CLOSE-WAIT" %}
+                                <span class="badge rounded-pill text-bg-warning status-pill">
+                                    {{ s.state }}
+                                </span>
+                            {% elif s.state == "SYN-SENT" %}
+                                <span class="badge rounded-pill text-bg-info status-pill">
+                                    {{ s.state }}
+                                </span>
+                            {% else %}
+                                <span class="badge rounded-pill text-bg-dark status-pill">
+                                    {{ s.state }}
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <td class="mono">{{ s.local }}</td>
+                        <td class="mono">{{ s.peer }}</td>
+                        <td class="mono">{{ s.process }}</td>
+
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-secondary copy-row-button" type="button">
+                                <i class="bi bi-clipboard"></i>
+                            </button>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-5">
+                            No sockets were found.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<div id="emptyState" class="empty-state text-center p-5 mt-4 d-none">
+    <i class="bi bi-search display-5 text-muted"></i>
+    <h2 class="h5 mt-3">No matching sockets found</h2>
+    <p class="text-muted mb-0">
+        Try changing the search text or clearing the active filters.
+    </p>
 </div>
 
-<div class="card mb-4">
-    <div class="card-body">
-        <label for="searchInput" class="form-label">Buscar socket</label>
-        <input
-            type="text"
-            id="searchInput"
-            class="form-control"
-            placeholder="Buscar por protocolo, estado, IP, puerto o proceso..."
-        >
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="copyToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header">
+            <i class="bi bi-check-circle text-success me-2"></i>
+            <strong class="me-auto">Copied</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">
+            Socket row copied to clipboard.
+        </div>
     </div>
-</div>
-
-<div class="table-responsive">
-    <table class="table table-striped table-hover table-bordered bg-white" id="socketTable">
-        <thead class="table-dark">
-            <tr>
-                <th>Protocolo</th>
-                <th>Estado</th>
-                <th>Dirección local</th>
-                <th>Dirección remota</th>
-                <th>Proceso</th>
-            </tr>
-        </thead>
-
-        <tbody>
-            {% for s in sockets %}
-                <tr>
-                    <td>
-                        {% if s.netid == "tcp" %}
-                            <span class="badge bg-primary">{{ s.netid|upper }}</span>
-                        {% elif s.netid == "udp" %}
-                            <span class="badge bg-info text-dark">{{ s.netid|upper }}</span>
-                        {% else %}
-                            <span class="badge bg-secondary">{{ s.netid|upper }}</span>
-                        {% endif %}
-                    </td>
-
-                    <td>
-                        {% if s.state == "LISTEN" %}
-                            <span class="badge bg-success">{{ s.state }}</span>
-                        {% elif s.state == "ESTAB" or s.state == "ESTABLISHED" %}
-                            <span class="badge bg-primary">{{ s.state }}</span>
-                        {% elif s.state == "UNCONN" %}
-                            <span class="badge bg-secondary">{{ s.state }}</span>
-                        {% elif s.state == "CLOSE-WAIT" %}
-                            <span class="badge bg-warning text-dark">{{ s.state }}</span>
-                        {% else %}
-                            <span class="badge bg-dark">{{ s.state }}</span>
-                        {% endif %}
-                    </td>
-
-                    <td><code>{{ s.local }}</code></td>
-                    <td><code>{{ s.peer }}</code></td>
-                    <td><code>{{ s.process }}</code></td>
-                </tr>
-            {% empty %}
-                <tr>
-                    <td colspan="5" class="text-center text-muted">
-                        No se encontraron sockets.
-                    </td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
 </div>
 
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    const searchInput = document.getElementById("searchInput");
-    const tableRows = document.querySelectorAll("#socketTable tbody tr");
+    document.addEventListener("DOMContentLoaded", function () {
+        const searchInput = document.getElementById("searchInput");
+        const protocolFilter = document.getElementById("protocolFilter");
+        const stateFilter = document.getElementById("stateFilter");
+        const resetFiltersButton = document.getElementById("resetFiltersButton");
+        const refreshButton = document.getElementById("refreshButton");
+        const liveButton = document.getElementById("liveButton");
+        const exportCsvButton = document.getElementById("exportCsvButton");
+        const liveDot = document.getElementById("liveDot");
+        const liveStatus = document.getElementById("liveStatus");
+        const lastUpdated = document.getElementById("lastUpdated");
+        const emptyState = document.getElementById("emptyState");
 
-    searchInput.addEventListener("input", function () {
-        const searchText = searchInput.value.toLowerCase();
+        const totalSockets = document.getElementById("totalSockets");
+        const visibleSockets = document.getElementById("visibleSockets");
+        const listeningSockets = document.getElementById("listeningSockets");
+        const establishedSockets = document.getElementById("establishedSockets");
 
-        tableRows.forEach(function (row) {
-            const rowText = row.textContent.toLowerCase();
+        const table = document.getElementById("socketTable");
+        const tbody = table.querySelector("tbody");
+        const rows = Array.from(tbody.querySelectorAll("tr[data-search]"));
 
-            if (rowText.includes(searchText)) {
-                row.style.display = "";
+        let liveInterval = null;
+        let liveMode = localStorage.getItem("socketLiveMode") === "true";
+        let currentSort = {
+            index: null,
+            direction: "asc"
+        };
+
+        function normalizeText(value) {
+            return String(value || "").toLowerCase().trim();
+        }
+
+        function setLastUpdated() {
+            const now = new Date();
+
+            lastUpdated.textContent = now.toLocaleString("en-GB", {
+                year: "numeric",
+                month: "short",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit"
+            });
+        }
+
+        function updateSummary() {
+            const visibleRows = rows.filter(function (row) {
+                return !row.classList.contains("d-none");
+            });
+
+            const listeningRows = rows.filter(function (row) {
+                return row.dataset.state === "LISTEN";
+            });
+
+            const establishedRows = rows.filter(function (row) {
+                return row.dataset.state === "ESTAB" || row.dataset.state === "ESTABLISHED";
+            });
+
+            totalSockets.textContent = rows.length;
+            visibleSockets.textContent = visibleRows.length;
+            listeningSockets.textContent = listeningRows.length;
+            establishedSockets.textContent = establishedRows.length;
+
+            emptyState.classList.toggle("d-none", visibleRows.length !== 0);
+        }
+
+        function applyFilters() {
+            const searchValue = normalizeText(searchInput.value);
+            const protocolValue = normalizeText(protocolFilter.value);
+            const stateValue = stateFilter.value;
+
+            rows.forEach(function (row) {
+                const rowSearch = normalizeText(row.dataset.search);
+                const rowProtocol = normalizeText(row.dataset.protocol);
+                const rowState = row.dataset.state;
+
+                const matchesSearch = rowSearch.includes(searchValue);
+                const matchesProtocol = protocolValue === "" || rowProtocol === protocolValue;
+                const matchesState = stateValue === "" || rowState === stateValue;
+
+                row.classList.toggle("d-none", !(matchesSearch && matchesProtocol && matchesState));
+            });
+
+            updateSummary();
+        }
+
+        function updateLiveUi() {
+            if (liveMode) {
+                liveDot.classList.add("active");
+                liveStatus.textContent = "Live Mode enabled";
+                liveStatus.classList.remove("text-muted");
+                liveStatus.classList.add("text-success");
+
+                liveButton.classList.remove("btn-success");
+                liveButton.classList.add("btn-outline-danger");
+                liveButton.innerHTML = '<i class="bi bi-stop-circle me-1"></i> Disable Live Mode';
             } else {
-                row.style.display = "none";
+                liveDot.classList.remove("active");
+                liveStatus.textContent = "Live Mode disabled";
+                liveStatus.classList.add("text-muted");
+                liveStatus.classList.remove("text-success");
+
+                liveButton.classList.add("btn-success");
+                liveButton.classList.remove("btn-outline-danger");
+                liveButton.innerHTML = '<i class="bi bi-play-circle me-1"></i> Enable Live Mode';
             }
+        }
+
+        function startLiveMode() {
+            stopLiveMode();
+
+            liveInterval = setInterval(function () {
+                window.location.reload();
+            }, 10000);
+        }
+
+        function stopLiveMode() {
+            if (liveInterval !== null) {
+                clearInterval(liveInterval);
+                liveInterval = null;
+            }
+        }
+
+        function setLiveMode(enabled) {
+            liveMode = enabled;
+            localStorage.setItem("socketLiveMode", String(enabled));
+            updateLiveUi();
+
+            if (enabled) {
+                startLiveMode();
+            } else {
+                stopLiveMode();
+            }
+        }
+
+        function resetFilters() {
+            searchInput.value = "";
+            protocolFilter.value = "";
+            stateFilter.value = "";
+            applyFilters();
+        }
+
+        function getRowCellText(row, index) {
+            const cell = row.children[index];
+            return normalizeText(cell ? cell.textContent : "");
+        }
+
+        function sortTableByColumn(index) {
+            if (currentSort.index === index) {
+                currentSort.direction = currentSort.direction === "asc" ? "desc" : "asc";
+            } else {
+                currentSort.index = index;
+                currentSort.direction = "asc";
+            }
+
+            const sortedRows = [...rows].sort(function (a, b) {
+                const valueA = getRowCellText(a, index);
+                const valueB = getRowCellText(b, index);
+
+                return valueA.localeCompare(valueB, undefined, {
+                    numeric: true,
+                    sensitivity: "base"
+                });
+            });
+
+            if (currentSort.direction === "desc") {
+                sortedRows.reverse();
+            }
+
+            sortedRows.forEach(function (row) {
+                tbody.appendChild(row);
+            });
+        }
+
+        function getVisibleRows() {
+            return rows.filter(function (row) {
+                return !row.classList.contains("d-none");
+            });
+        }
+
+        function exportVisibleRowsToCsv() {
+            const visibleRows = getVisibleRows();
+            const headers = ["Protocol", "State", "Local address", "Peer address", "Process"];
+
+            const csvRows = [
+                headers.join(",")
+            ];
+
+            visibleRows.forEach(function (row) {
+                const values = Array.from(row.children)
+                    .slice(0, 5)
+                    .map(function (cell) {
+                        const cleanValue = cell.textContent.trim().replace(/\s+/g, " ");
+                        return '"' + cleanValue.replace(/"/g, '""') + '"';
+                    });
+
+                csvRows.push(values.join(","));
+            });
+
+            const csvContent = csvRows.join("\n");
+            const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "socket_inventory.csv";
+            link.click();
+
+            URL.revokeObjectURL(url);
+        }
+
+        function copyRowToClipboard(row) {
+            const values = Array.from(row.children)
+                .slice(0, 5)
+                .map(function (cell) {
+                    return cell.textContent.trim().replace(/\s+/g, " ");
+                });
+
+            const text = [
+                "Protocol: " + values[0],
+                "State: " + values[1],
+                "Local address: " + values[2],
+                "Peer address: " + values[3],
+                "Process: " + values[4]
+            ].join("\n");
+
+            navigator.clipboard.writeText(text).then(function () {
+                const toastElement = document.getElementById("copyToast");
+                const toast = new bootstrap.Toast(toastElement);
+                toast.show();
+            });
+        }
+
+        searchInput.addEventListener("input", applyFilters);
+        protocolFilter.addEventListener("change", applyFilters);
+        stateFilter.addEventListener("change", applyFilters);
+
+        resetFiltersButton.addEventListener("click", resetFilters);
+
+        refreshButton.addEventListener("click", function () {
+            window.location.reload();
         });
+
+        liveButton.addEventListener("click", function () {
+            setLiveMode(!liveMode);
+        });
+
+        exportCsvButton.addEventListener("click", exportVisibleRowsToCsv);
+
+        document.querySelectorAll(".sort-button").forEach(function (button) {
+            button.addEventListener("click", function () {
+                sortTableByColumn(Number(button.dataset.sortIndex));
+            });
+        });
+
+        document.querySelectorAll(".copy-row-button").forEach(function (button) {
+            button.addEventListener("click", function () {
+                copyRowToClipboard(button.closest("tr"));
+            });
+        });
+
+        setLastUpdated();
+        updateLiveUi();
+        applyFilters();
+
+        if (liveMode) {
+            startLiveMode();
+        }
     });
 </script>
 {% endblock %}
